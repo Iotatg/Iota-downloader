@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: iota
+      POSTGRES_PASSWORD: iota
+      POSTGRES_DB: iota_downloader
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U iota -d iota_downloader"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  bot:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://iota:iota@postgres:5432/iota_downloader?sslmode=disable
+    volumes:
+      - downloads:/app/downloads
+      - logs:/app/logs
+      - session:/app/session
+
+volumes:
+  postgres-data:
+  downloads:
+  logs:
+  session:
