@@ -141,14 +141,7 @@ func (r *Registry) fallbackAllowed(err error, service string) bool {
 func (r *Registry) resolve(ctx context.Context, service, rawURL string) (*Resolved, error) {
 	switch service {
 	case platforms.ServiceYouTube:
-		if r.YouTube == nil {
-			return nil, fmt.Errorf("the youtube service is not ready")
-		}
-		post, err := r.YouTube.FetchVideo(ctx, rawURL)
-		if err != nil {
-			return nil, err
-		}
-		return &Resolved{Service: service, Post: post}, nil
+		return r.resolveYouTube(ctx, rawURL)
 
 	case platforms.ServiceTikTok:
 		return r.resolveTikTok(ctx, rawURL)
@@ -337,6 +330,38 @@ func tweetThumbnail(tweet *platforms.TwitterPost) string {
 		}
 	}
 	return ""
+}
+
+// resolveYouTube resolves a YouTube video.
+//
+// The own iota-api is asked first when it is configured: it already
+// holds the cookies and the remux path. The own yt-dlp resolver stays
+// the fallback, so a failure of the api never costs a working
+// download and the old code path is untouched.
+func (r *Registry) resolveYouTube(ctx context.Context, rawURL string) (*Resolved, error) {
+	if r.IotaAPI != nil && r.IotaAPI.Enabled() {
+		post, err := r.IotaAPI.FetchVideo(ctx, rawURL)
+		if err == nil {
+			return &Resolved{
+				Service: platforms.ServiceYouTube,
+				Post:    post,
+				Backend: platforms.BackendIota,
+				Headers: r.IotaAPI.Headers(),
+			}, nil
+		}
+		if r.Log != nil {
+			r.Log.Error("iota api youtube lookup failed: %v", err)
+		}
+	}
+
+	if r.YouTube == nil {
+		return nil, fmt.Errorf("the youtube service is not ready")
+	}
+	post, err := r.YouTube.FetchVideo(ctx, rawURL)
+	if err != nil {
+		return nil, err
+	}
+	return &Resolved{Service: platforms.ServiceYouTube, Post: post, Backend: platforms.BackendYTDLP}, nil
 }
 
 // resolveSpotify converts a Spotify track into an audio only result.

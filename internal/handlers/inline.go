@@ -217,7 +217,9 @@ func (h *Handler) handleAudioCallback(ctx context.Context, query *tg.CallbackQue
 	chatID := query.Message.Chat.ID
 
 	if service == platforms.ServiceYouTube {
-		sourceURL = "https://www.youtube.com/watch?v=" + sourceURL
+		// The media id of the own api carries the provider prefix
+		// ("yt:<video id>"), the watch url needs the bare id.
+		sourceURL = "https://www.youtube.com/watch?v=" + strings.TrimPrefix(sourceURL, "yt:")
 	}
 
 	if h.deps.Dedupe != nil {

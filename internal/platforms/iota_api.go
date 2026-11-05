@@ -49,6 +49,120 @@ func (s *IotaAPIService) Headers() map[string]string {
 	return map[string]string{"X-API-Key": s.apiKey}
 }
 
+// Unreachable reports whether the api could not be reached at all.
+//
+// An api that answers with an error status still works, only a
+// transport failure means the backend is offline. Every transport
+// failure of the api is reported as "request failed", an answer of the
+// api carries its status instead.
+func (s *IotaAPIService) Unreachable(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "request failed")
+}
+
+// infoWithRetry reads the metadata of a media id.
+//
+// The extraction of the api can be blocked for a moment, so the lookup
+// is tried twice with a short pause. The second attempt usually
+// succeeds.
+func (s *IotaAPIService) infoWithRetry(ctx context.Context, mediaID string) (*IotaTrack, error) {
+	var lastErr error
+	for attempt := 0; attempt < 2; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(2 * time.Second):
+			}
+		}
+		info, err := s.Info(ctx, mediaID)
+		if err == nil {
+			return info, nil
+		}
+		lastErr = err
+		if s.Unreachable(err) {
+			break
+		}
+	}
+	return nil, lastErr
+}
+
+// FetchVideo resolves a YouTube video through the api.
+//
+// This is the provider side of the api: it turns a link into a media
+// post the delivery layer understands. The own resolver of the platform
+// (yt-dlp) stays untouched, the api is only asked when it is
+// configured.
+//
+// The metadata lookup is a nice-to-have: the download endpoint of the
+// api resolves the stream on its own, so a failed lookup leaves the
+// post without a title instead of costing the user the file. The
+// returned error is fatal only when the api itself is unreachable.
+func (s *IotaAPIService) FetchVideo(ctx context.Context, rawURL string) (*Post, error) {
+	if !s.Enabled() {
+		return nil, fmt.Errorf("the iota api is not configured")
+	}
+	videoID := YouTubeVideoID(rawURL)
+	if videoID == "" {
+		return nil, fmt.Errorf("no youtube video id in %s", rawURL)
+	}
+
+	mediaID := "yt:" + videoID
+	title := videoID
+	artist := ""
+	duration := 0
+	thumb := ""
+
+	info, err := s.infoWithRetry(ctx, mediaID)
+	if err != nil {
+		if s.log != nil {
+			s.log.Error("iota api youtube metadata lookup failed: %v", err)
+		}
+		if s.Unreachable(err) {
+			return nil, err
+		}
+	} else {
+		if info.Title != "" {
+			title = info.Title
+		}
+		artist = info.Artist
+		duration = info.Duration
+		thumb = info.Thumbnail
+	}
+
+	post := &Post{
+		ID:          mediaID,
+		Service:     ServiceYouTube,
+		Author:      artist,
+		Description: title,
+		Metadata: &Metadata{
+			Title:     title,
+			Artists:   artist,
+			Duration:  time.Duration(duration) * time.Second,
+			Thumbnail: thumb,
+			SourceURL: rawURL,
+			URL:       rawURL,
+		},
+		Media: []Media{{
+			URL:   s.DownloadURL(mediaID, KindVideo, 0, 0, ""),
+			Type:  KindVideo,
+			Thumb: thumb,
+		}},
+	}
+	if duration > 0 {
+		post.Info = &VideoInfo{
+			ID:              videoID,
+			Description:     title,
+			Author:          artist,
+			Cover:           thumb,
+			DurationSeconds: duration,
+		}
+	}
+	return post, nil
+}
+
 // IotaTrack is the metadata of a track resolved through the api.
 type IotaTrack struct {
 	MediaID   string
@@ -66,6 +180,33 @@ func (s *IotaAPIService) StreamURL(mediaID string) string {
 		return ""
 	}
 	return s.baseURL + "/stream/" + url.PathEscape(mediaID)
+}
+
+// DownloadURL builds the absolute download url of a media id.
+// kind is "audio" or "video". maxHeight caps the video height. format and
+// bitrate select the MP3 transcode of an audio download.
+func (s *IotaAPIService) DownloadURL(mediaID, kind string, maxHeight, bitrate int, format string) string {
+	if !s.Enabled() {
+		return ""
+	}
+	endpoint := s.baseURL + "/download/" + url.PathEscape(mediaID)
+	query := url.Values{}
+	if strings.TrimSpace(kind) != "" {
+		query.Set("kind", kind)
+	}
+	if maxHeight > 0 {
+		query.Set("max_height", strconv.Itoa(maxHeight))
+	}
+	if strings.TrimSpace(format) != "" {
+		query.Set("format", format)
+	}
+	if bitrate > 0 {
+		query.Set("bitrate", strconv.Itoa(bitrate))
+	}
+	if encoded := query.Encode(); encoded != "" {
+		return endpoint + "?" + encoded
+	}
+	return endpoint
 }
 
 // Info fetches the metadata of a media id.

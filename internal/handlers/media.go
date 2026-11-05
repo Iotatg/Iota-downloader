@@ -774,12 +774,53 @@ func (h *Handler) riteshBackend(resolved *services.Resolved) bool {
 // usesYTDLP reports whether the media is downloaded with yt-dlp.
 //
 // YouTube and the platforms that serve their media as a protected stream are
-// downloaded with yt-dlp, the Ritesh api delivers a ready made file.
+// downloaded with yt-dlp unless the iota-api already delivered a ready file.
 func (h *Handler) usesYTDLP(resolved *services.Resolved) bool {
-	if resolved == nil || resolved.Backend == platforms.BackendRitesh {
+	if resolved == nil {
+		return false
+	}
+	if resolved.Backend == platforms.BackendRitesh || resolved.Backend == platforms.BackendIota {
 		return false
 	}
 	return resolved.Backend == platforms.BackendYTDLP || resolved.Service == platforms.ServiceYouTube
+}
+
+// iotaBackend reports whether the media comes from the own iota-api.
+func (h *Handler) iotaBackend(resolved *services.Resolved) bool {
+	return resolved != nil && resolved.Backend == platforms.BackendIota
+}
+
+// iotaDownloadURL builds the iota-api download address for a resolved item.
+//
+// Video downloads carry the height of the user setting. Audio downloads ask
+// for an MP3 at the bitrate of the user setting.
+func (h *Handler) iotaDownloadURL(resolved *services.Resolved, item platforms.Media, set settings.Set) string {
+	if resolved == nil || h.deps.Services == nil || h.deps.Services.IotaAPI == nil {
+		return item.URL
+	}
+	mediaID := ""
+	if resolved.Post != nil {
+		mediaID = resolved.Post.ID
+	}
+	if mediaID == "" {
+		return item.URL
+	}
+	kind := item.Type
+	if kind == "" {
+		kind = platforms.KindVideo
+	}
+	if kind == platforms.KindAudio {
+		format := settings.AudioCodec(set.AudioFormat)
+		bitrate := settings.AudioBitrate(set.AudioFormat)
+		if format != "mp3" {
+			format = "mp3"
+		}
+		if bitrate <= 0 {
+			bitrate = 192
+		}
+		return h.deps.Services.IotaAPI.DownloadURL(mediaID, platforms.KindAudio, 0, bitrate, format)
+	}
+	return h.deps.Services.IotaAPI.DownloadURL(mediaID, platforms.KindVideo, settings.VideoMaxHeight(set.VideoQuality), 0, "")
 }
 
 // ytdlpURL returns the address that yt-dlp downloads.
@@ -821,6 +862,13 @@ func (h *Handler) audioMetadata(resolved *services.Resolved) media.Metadata {
 
 // downloadMedia downloads a single media item.
 func (h *Handler) downloadMedia(ctx context.Context, resolved *services.Resolved, item platforms.Media, set settings.Set) (*download.Metrics, error) {
+	return h.downloadMediaFrom(ctx, resolved, item, set, "")
+}
+
+// downloadMediaFrom downloads a media item. A non-empty sourceURL is
+// downloaded instead of the address the media item carries; the file
+// name stays the same.
+func (h *Handler) downloadMediaFrom(ctx context.Context, resolved *services.Resolved, item platforms.Media, set settings.Set, sourceURL string) (*download.Metrics, error) {
 	started := time.Now()
 
 	if h.usesYTDLP(resolved) {
@@ -835,6 +883,9 @@ func (h *Handler) downloadMedia(ctx context.Context, resolved *services.Resolved
 		return metrics, metricsErr
 	}
 
+	if sourceURL == "" {
+		sourceURL = item.URL
+	}
 	extension := ""
 	if resolved.Backend == platforms.BackendRitesh {
 		// The api delivers a ready made file, the name needs the extension
@@ -845,13 +896,66 @@ func (h *Handler) downloadMedia(ctx context.Context, resolved *services.Resolved
 			extension = ".mp3"
 		}
 	}
+	if h.iotaBackend(resolved) {
+		extension = ".mp4"
+		if item.Type == platforms.KindAudio {
+			extension = ".mp3"
+		}
+		if sourceURL == item.URL {
+			sourceURL = h.iotaDownloadURL(resolved, item, set)
+		}
+	}
 
-	metrics, err := h.deps.Downloader.Download(ctx, item.URL, h.filenameFor(resolved, item, extension), download.Options{
+	metrics, err := h.deps.Downloader.Download(ctx, sourceURL, h.filenameFor(resolved, item, extension), download.Options{
 		MaxSize: h.maxFileSize(),
 		Headers: resolved.Headers,
 	})
 	h.logPerf("download_media", resolved.Service, started)
-	return metrics, err
+	return metrics, tooLargeError(err, h.maxFileSize())
+}
+
+// isTooLarge reports whether the error is the "too large" answer of the
+// download step.
+func isTooLarge(err error) bool {
+	if err == nil {
+		return false
+	}
+	var target *download.TooLargeError
+	return errors.As(err, &target) || strings.Contains(err.Error(), "video_too_large")
+}
+
+// iotaFallbackURL builds the download address of the api in a lower
+// resolution. It returns an empty string when the wanted resolution
+// already is the lower one.
+func (h *Handler) iotaFallbackURL(resolved *services.Resolved, item platforms.Media, set settings.Set) string {
+	if h.iotaBackend(resolved) == false || h.deps.Services.IotaAPI == nil {
+		return ""
+	}
+	mediaID := resolved.Post.ID
+	if mediaID == "" {
+		return ""
+	}
+	kind := item.Type
+	if kind == "" {
+		kind = platforms.KindVideo
+	}
+	return h.deps.Services.IotaAPI.DownloadURL(mediaID, kind, 1080, 0, "")
+}
+
+// tooLargeError turns the "too large" answer of the api into the error of
+// the downloader.
+//
+// The api refuses a video that no chat can take (a 4K stream of a long
+// video is gigabytes). The user must learn that the video is too big,
+// not that something went wrong.
+func tooLargeError(err error, maxSize int64) error {
+	if err == nil {
+		return nil
+	}
+	if strings.Contains(err.Error(), "413") || strings.Contains(err.Error(), "video_too_large") {
+		return &download.TooLargeError{Size: 0, MaxSize: maxSize}
+	}
+	return err
 }
 
 // downloadAudio downloads an audio track.
@@ -870,19 +974,26 @@ func (h *Handler) downloadAudio(ctx context.Context, resolved *services.Resolved
 		return metrics, metricsErr
 	}
 
+	sourceURL := item.URL
 	extension := "." + codec
 	if resolved.Backend == platforms.BackendRitesh {
 		// The api always serves an mp3, the name must carry the real
 		// container so that the conversion into the wanted format works.
 		extension = ".mp3"
 	}
+	if h.iotaBackend(resolved) {
+		extension = ".mp3"
+		audioItem := item
+		audioItem.Type = platforms.KindAudio
+		sourceURL = h.iotaDownloadURL(resolved, audioItem, set)
+	}
 
-	metrics, err := h.deps.Downloader.Download(ctx, item.URL, h.filenameFor(resolved, item, extension), download.Options{
+	metrics, err := h.deps.Downloader.Download(ctx, sourceURL, h.filenameFor(resolved, item, extension), download.Options{
 		MaxSize: h.maxFileSize(),
 		Headers: resolved.Headers,
 	})
 	h.logPerf("download_audio", resolved.Service, started)
-	return metrics, err
+	return metrics, tooLargeError(err, h.maxFileSize())
 }
 
 // metricsFor builds the download metrics of a local file.
@@ -954,7 +1065,19 @@ func (h *Handler) singleOptions(resolved *services.Resolved, item platforms.Medi
 			return h.deps.TG.SendChatAction(ctx, chatID, action)
 		},
 		Download: func(ctx context.Context) (*download.Metrics, error) {
-			return h.downloadMedia(ctx, resolved, item, set)
+			metrics, err := h.downloadMedia(ctx, resolved, item, set)
+			if err == nil || !h.iotaBackend(resolved) || !isTooLarge(err) {
+				return metrics, err
+			}
+			// The wanted resolution makes the video bigger than a chat
+			// can take. The next lower one is delivered instead of
+			// failing the request.
+			fallback := h.iotaFallbackURL(resolved, item, set)
+			if fallback == "" {
+				return nil, err
+			}
+			h.answerText(ctx, chatID, messages.VideoTooLargeFallback())
+			return h.downloadMediaFrom(ctx, resolved, item, set, fallback)
 		},
 		Send: func(ctx context.Context, path string) (*tg.Message, error) {
 			return h.sendMedia(ctx, chatID, path, kind, caption, markup, set, h.coverURL(resolved, item))

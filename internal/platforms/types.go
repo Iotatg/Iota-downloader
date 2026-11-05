@@ -15,6 +15,8 @@ const (
 const (
 	// BackendRitesh names the Ritesh api as the source of a media.
 	BackendRitesh = "ritesh"
+	// BackendIota names the own iota-api as the source of a media.
+	BackendIota = "iota"
 	// BackendYTDLP names yt-dlp as the source of a media, the download runs
 	// with yt-dlp as well.
 	BackendYTDLP = "ytdlp"

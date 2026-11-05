@@ -393,3 +393,33 @@ func IsYouTubeMusic(rawURL string) bool {
 	}
 	return strings.HasPrefix(strings.ToLower(parsed.Hostname()), "music.")
 }
+
+var youtubeVideoIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]{11}$`)
+
+// YouTubeVideoID extracts the 11 character video id of a YouTube URL.
+func YouTubeVideoID(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if host == "youtu.be" || strings.HasSuffix(host, ".youtu.be") {
+		id := strings.Trim(parsed.EscapedPath(), "/")
+		if youtubeVideoIDRe.MatchString(id) {
+			return id
+		}
+	}
+	if id := parsed.Query().Get("v"); youtubeVideoIDRe.MatchString(id) {
+		return id
+	}
+	parts := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+	for index, part := range parts {
+		if part != "shorts" && part != "embed" && part != "live" && part != "v" {
+			continue
+		}
+		if index+1 < len(parts) && youtubeVideoIDRe.MatchString(parts[index+1]) {
+			return parts[index+1]
+		}
+	}
+	return ""
+}

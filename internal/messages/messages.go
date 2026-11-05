@@ -498,6 +498,13 @@ func LinkFailed(service string) string {
 func VideoTooLarge() string {
 	return item(text.SymCross, "the video is bigger than the size limit of the bot, try a shorter video or the mp3 option if it is available.")
 }
+
+// VideoTooLargeFallback tells the user that the video was delivered in
+// a lower resolution because the wanted one is bigger than a chat can
+// take.
+func VideoTooLargeFallback() string {
+	return item(text.SymInfo, "that resolution is bigger than a chat can take, the video comes in 1080p.")
+}
 func AudioTooLarge() string {
 	return item(text.SymCross, "the audio is bigger than the size limit of the bot, try a shorter track or another source link.")
 }

@@ -77,9 +77,9 @@ var Defaults = map[string]string{
 	FieldDeleteMessage: Off,
 	FieldInfoButtons:   Off,
 	FieldURLButton:     Off,
-	FieldAudioButton:   Off,
+	FieldAudioButton:   On,
 	FieldFileButton:    Off,
-	FieldVideoQuality:  Best,
+	FieldVideoQuality:  Balanced,
 	FieldAsDocument:    Off,
 	FieldAudioFormat:   MP3,
 }
