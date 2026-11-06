@@ -71,13 +71,16 @@ func (y *YTDLP) baseArgsWithPlaylist(allowPlaylist bool) []string {
 		"--no-warnings",
 		"--no-progress",
 		"--continue",
-		"--force-overwrites",
 		"--no-cache-dir",
 		"--impersonate", "chrome",
-		"--socket-timeout", "15",
-		"--retries", "2",
-		"--fragment-retries", "2",
-		"--concurrent-fragments", "4",
+		"--socket-timeout", "30",
+		"--retries", "5",
+		"--fragment-retries", "10",
+		// Many parallel fragments lift the throughput of an HLS or DASH
+		// stream, a single fragment connection stays at a few hundred KB/s.
+		"--concurrent-fragments", "16",
+		// The chunked downloader splits a big file into parallel ranges.
+		"--http-chunk-size", "10M",
 	}
 	if !allowPlaylist {
 		args = append(args, "--no-playlist")

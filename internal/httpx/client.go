@@ -55,8 +55,10 @@ func NewClient(timeout time.Duration, maxConnections int) *http.Client {
 		maxConnections = 64
 	}
 	transport := &http.Transport{
-		MaxIdleConns:        maxConnections,
-		MaxIdleConnsPerHost: maxConnections / 2,
+		MaxIdleConns: maxConnections,
+		// Every worker of a multipart download talks to the same host,
+		// the idle pool has to hold them all.
+		MaxIdleConnsPerHost: maxConnections,
 		MaxConnsPerHost:     maxConnections,
 		IdleConnTimeout:     90 * time.Second,
 	}

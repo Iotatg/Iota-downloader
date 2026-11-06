@@ -86,9 +86,11 @@ type Config struct {
 // DefaultConfig returns the shared download configuration.
 func DefaultConfig() Config {
 	return Config{
-		ChunkSize:          1 << 20,
-		MultipartThreshold: 12 << 20,
-		MaxWorkers:         6,
+		ChunkSize: 2 << 20,
+		// A file of eight megabytes already pays off with parallel
+		// ranges, the chunks of a smaller file are not worth the setup.
+		MultipartThreshold: 8 << 20,
+		MaxWorkers:         8,
 		HeadTimeout:        45 * time.Second,
 		StreamTimeout:      600 * time.Second,
 		ClientTimeout:      15 * time.Minute,
@@ -432,7 +434,10 @@ func (d *Downloader) downloadStream(ctx context.Context, rawURL, tempPath string
 		callback: opts.OnProgress,
 		activity: activity,
 	}
-	if _, err := io.Copy(writer, response.Body); err != nil {
+	// A big buffer keeps the read and write syscalls per megabyte low,
+	// the default of io.Copy is 32 kilobytes.
+	buffer := make([]byte, 1<<20)
+	if _, err := io.CopyBuffer(writer, response.Body, buffer); err != nil {
 		return writer.written, fmt.Errorf("copy body: %w", err)
 	}
 	if err := writer.finish(); err != nil {
