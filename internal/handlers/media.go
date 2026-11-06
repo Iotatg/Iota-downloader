@@ -874,6 +874,9 @@ func (h *Handler) downloadMediaFrom(ctx context.Context, resolved *services.Reso
 	if h.usesYTDLP(resolved) {
 		filename := h.filenameFor(resolved, item, ".mp4")
 		selector := settings.VideoFormatSelector(set.VideoQuality)
+		if resolved.Service != platforms.ServiceYouTube {
+			selector = settings.GenericVideoFormatSelector(set.VideoQuality)
+		}
 		path, err := h.deps.Services.YouTube.DownloadVideo(ctx, ytdlpURL(resolved, item), filename, selector, h.maxFileSize())
 		if err != nil {
 			return nil, err

@@ -225,6 +225,9 @@ func ServiceLabel(service string) string {
 	case ServiceResso:
 		return "Resso"
 	default:
+		if label := ExtraServiceLabel(service); label != "" {
+			return label
+		}
 		return service
 	}
 }
@@ -329,6 +332,11 @@ func ExtractLinks(text string) []Link {
 		seen[canonical] = true
 		links = append(links, Link{Service: item.service, URL: canonical, Index: item.start})
 	}
+	if len(links) == 0 {
+		if service, raw, ok := ExtractGenericLink(text); ok {
+			links = append(links, Link{Service: service, URL: raw, Index: 0})
+		}
+	}
 	return links
 }
 
@@ -369,6 +377,13 @@ func CanonicalizeURL(service, rawURL string) string {
 			return scheme + "://" + host + path + "?" + encoded
 		}
 		return scheme + "://" + host + path
+	}
+
+	if KeepURLQuery(service) {
+		parsed.Scheme = scheme
+		parsed.Host = host
+		parsed.Fragment = ""
+		return parsed.String()
 	}
 
 	return scheme + "://" + host + path

@@ -222,6 +222,9 @@ func (r *Registry) resolve(ctx context.Context, service, rawURL string) (*Resolv
 		return r.resolveResso(ctx, rawURL)
 
 	default:
+		if platforms.IsYTDLPService(service) {
+			return r.resolveWithYTDLPBackend(ctx, service, rawURL)
+		}
 		return nil, fmt.Errorf("unsupported service: %s", service)
 	}
 }

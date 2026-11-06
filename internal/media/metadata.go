@@ -138,7 +138,7 @@ func PrepareAudioFile(ctx context.Context, sourcePath string, metadata Metadata)
 	if sourcePath == "" {
 		return sourcePath
 	}
-	if _, err := exec.LookPath("ffmpeg"); err != nil {
+	if _, err := exec.LookPath(ffmpegBinary()); err != nil {
 		return sourcePath
 	}
 
@@ -179,7 +179,7 @@ func PrepareAudioFile(ctx context.Context, sourcePath string, metadata Metadata)
 	}
 	args = append(args, target)
 
-	command := exec.CommandContext(ctx, "ffmpeg", args...)
+	command := exec.CommandContext(ctx, ffmpegBinary(), args...)
 	if err := command.Run(); err != nil {
 		_ = os.Remove(target)
 		return sourcePath

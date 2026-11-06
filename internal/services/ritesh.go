@@ -18,6 +18,9 @@ var riteshFallbackServices = map[string]bool{
 	platforms.ServiceSpotify:     true,
 	platforms.ServiceSoundCloud:  true,
 	platforms.ServiceDailymotion: true,
+	platforms.ServiceVimeo:       true,
+	platforms.ServiceRumble:      true,
+	platforms.ServiceVK:          true,
 }
 
 // riteshAudioPlatforms lists the platforms that always answer with a track.
@@ -29,6 +32,12 @@ var riteshAudioPlatforms = map[string]bool{
 	platforms.ServiceDeezer:     true,
 	platforms.ServiceGaana:      true,
 	platforms.ServiceTidal:      true,
+	platforms.ServiceBandcamp:   true,
+	platforms.ServiceMixcloud:   true,
+	platforms.ServiceAudiomack:  true,
+	platforms.ServiceAudius:     true,
+	platforms.ServiceJamendo:    true,
+	platforms.ServiceHearThis:   true,
 }
 
 // resolveWithRitesh resolves a link with the Ritesh api.

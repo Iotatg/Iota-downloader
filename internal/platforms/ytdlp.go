@@ -25,6 +25,9 @@ type YTDLPOptions struct {
 	SleepInterval      float64
 	MaxSleepInterval   float64
 	Binary             string
+	// FFMPEGLocation is the folder of the ffmpeg binary yt-dlp uses for the
+	// merge of the streams.
+	FFMPEGLocation string
 }
 
 // YTDLP runs the yt-dlp binary.
@@ -70,6 +73,7 @@ func (y *YTDLP) baseArgsWithPlaylist(allowPlaylist bool) []string {
 		"--continue",
 		"--force-overwrites",
 		"--no-cache-dir",
+		"--impersonate", "chrome",
 		"--socket-timeout", "15",
 		"--retries", "2",
 		"--fragment-retries", "2",
@@ -97,6 +101,11 @@ func (y *YTDLP) baseArgsWithPlaylist(allowPlaylist bool) []string {
 	}
 	if y.opts.JSRuntimes != "" {
 		args = append(args, "--js-runtimes", y.opts.JSRuntimes)
+	}
+	if y.opts.FFMPEGLocation != "" {
+		if _, err := os.Stat(filepath.Join(y.opts.FFMPEGLocation, "ffmpeg")); err == nil {
+			args = append(args, "--ffmpeg-location", y.opts.FFMPEGLocation)
+		}
 	}
 	if y.opts.SleepRequests > 0 {
 		args = append(args, "--sleep-requests", strconv.FormatFloat(y.opts.SleepRequests, 'f', -1, 64))
@@ -209,6 +218,12 @@ func (y *YTDLP) Download(ctx context.Context, url string, opts DownloadOptions) 
 	cmd := exec.CommandContext(ctx, y.opts.Binary, args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
+		// yt-dlp can fail after the file was written, a broken metadata
+		// step for example. The file is then complete and the user must
+		// not see a failure for it.
+		if path, pathErr := resolveDownloadedPath(opts.OutputTemplate, output); pathErr == nil {
+			return path, nil
+		}
 		return "", fmt.Errorf("yt-dlp download failed for %s: %w: %s", url, err, truncateOutput(string(output)))
 	}
 	return resolveDownloadedPath(opts.OutputTemplate, output)

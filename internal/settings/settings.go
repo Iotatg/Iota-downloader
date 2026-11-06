@@ -282,6 +282,21 @@ func VideoFormatSelector(quality string) string {
 	}
 }
 
+// GenericVideoFormatSelector maps the video quality onto a yt-dlp selector
+// that works on platforms without YouTube's split h264/m4a streams.
+//
+// Wistia, Streamable, Coub and similar hosts publish a single progressive
+// file whose codec tags are often "unknown". The YouTube chain then refuses
+// every format. This selector caps the height when the host reports one and
+// merges the streams when it does not.
+func GenericVideoFormatSelector(quality string) string {
+	height := VideoMaxHeight(quality)
+	return fmt.Sprintf(
+		"best[height<=%d]/bestvideo[height<=%d]+bestaudio/bestvideo+bestaudio/best",
+		height, height,
+	)
+}
+
 // videoFormatSelector builds the format chain of a maximum height.
 //
 // The first three entries of the chain want the height of the preference

@@ -35,7 +35,7 @@ func ConvertAudioFormat(ctx context.Context, path, codec string, bitrate int, fo
 	if !force && strings.EqualFold(strings.TrimPrefix(filepath.Ext(path), "."), codec) {
 		return path, nil
 	}
-	if _, err := exec.LookPath("ffmpeg"); err != nil {
+	if _, err := exec.LookPath(ffmpegBinary()); err != nil {
 		return path, nil
 	}
 
@@ -64,7 +64,7 @@ func ConvertAudioFormat(ctx context.Context, path, codec string, bitrate int, fo
 	}
 	args = append(args, target)
 
-	command := exec.CommandContext(ctx, "ffmpeg", args...)
+	command := exec.CommandContext(ctx, ffmpegBinary(), args...)
 	if err := command.Run(); err != nil {
 		_ = os.Remove(target)
 		return path, fmt.Errorf("convert audio to %s: %w", codec, err)
@@ -86,7 +86,7 @@ func EmbedAudioCover(ctx context.Context, audioPath, coverPath string) (string, 
 	if audioPath == "" || coverPath == "" {
 		return "", false
 	}
-	if _, err := exec.LookPath("ffmpeg"); err != nil {
+	if _, err := exec.LookPath(ffmpegBinary()); err != nil {
 		return "", false
 	}
 	if _, err := os.Stat(coverPath); err != nil {
@@ -114,7 +114,7 @@ func EmbedAudioCover(ctx context.Context, audioPath, coverPath string) (string, 
 	}
 	args = append(args, target)
 
-	command := exec.CommandContext(ctx, "ffmpeg", args...)
+	command := exec.CommandContext(ctx, ffmpegBinary(), args...)
 	if err := command.Run(); err != nil {
 		_ = os.Remove(target)
 		return "", false

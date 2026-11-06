@@ -175,6 +175,7 @@ func buildServices(cfg *config.Config, log *logger.Logger) (*services.Registry, 
 		SleepRequests:      cfg.YTDLPYoutubeSleepRequests,
 		SleepInterval:      cfg.YTDLPYoutubeSleepInterval,
 		MaxSleepInterval:   cfg.YTDLPYoutubeMaxSleepInterval,
+		FFMPEGLocation:     cfg.FFMPEGLocation,
 	}, log)
 
 	instagram := platforms.NewInstagramService(cobalt, log)

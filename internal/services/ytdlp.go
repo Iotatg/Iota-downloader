@@ -48,6 +48,22 @@ func (r *Registry) resolveWithYTDLPBackend(ctx context.Context, service, rawURL 
 		return &Resolved{Service: service, Post: post}, nil
 	}
 
+	if platforms.IsExtraAudio(service) {
+		page := rawURL
+		if post.Metadata != nil && post.Metadata.SourceURL != "" {
+			page = post.Metadata.SourceURL
+		}
+		if len(post.Media) == 0 {
+			post.Media = []platforms.Media{{URL: page, Type: platforms.KindAudio, Thumb: ""}}
+		} else {
+			for index := range post.Media {
+				post.Media[index].Type = platforms.KindAudio
+				post.Media[index].URL = page
+			}
+		}
+		return &Resolved{Service: service, Post: post, AudioOnly: true, Backend: platforms.BackendYTDLP}, nil
+	}
+
 	// The download runs with yt-dlp again, the media of the post keeps the
 	// page of the platform so that the extractor finds the stream.
 	page := rawURL

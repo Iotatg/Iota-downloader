@@ -88,7 +88,7 @@ func PrepareThumbnail(ctx context.Context, path string) (string, error) {
 	if path == "" {
 		return "", nil
 	}
-	if _, err := exec.LookPath("ffmpeg"); err != nil {
+	if _, err := exec.LookPath(ffmpegBinary()); err != nil {
 		return path, nil
 	}
 	if _, err := os.Stat(path); err != nil {
@@ -109,7 +109,7 @@ func PrepareThumbnail(ctx context.Context, path string) (string, error) {
 		}
 		args = append(args, target)
 
-		command := exec.CommandContext(ctx, "ffmpeg", args...)
+		command := exec.CommandContext(ctx, ffmpegBinary(), args...)
 		if err := command.Run(); err != nil {
 			_ = os.Remove(target)
 			return "", err

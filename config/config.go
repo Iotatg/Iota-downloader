@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -141,6 +142,10 @@ type Config struct {
 	YTDLPYoutubeSleepRequests      float64
 	YTDLPYoutubeSleepInterval      float64
 	YTDLPYoutubeMaxSleepInterval   float64
+	// FFMPEGLocation is the folder of the ffmpeg binary that yt-dlp and the
+	// media helpers use. A broken build on the PATH can crash on a
+	// fragmented mp4, the folder of a known good build avoids it.
+	FFMPEGLocation string
 
 	DownloadSubprocessThresholdMB int
 
@@ -421,6 +426,11 @@ func Load() (*Config, error) {
 		c.YTDLPCookiesFromBrowser = c.YTDLPYoutubeCookiesFromBrowser
 	}
 
+	c.FFMPEGLocation, _ = readEnv("FFMPEG_LOCATION", false)
+	if c.FFMPEGLocation == "" {
+		c.FFMPEGLocation = defaultFFMPEGLocation()
+	}
+
 	c.SplitLargeFiles = readBoolEnv("SPLIT_LARGE_FILES", true)
 
 	apiID, err := readIntEnv("API_ID", false, "MTPROTO_API_ID")
@@ -458,6 +468,20 @@ func Load() (*Config, error) {
 }
 
 // readBoolEnv reads a boolean environment variable.
+// defaultFFMPEGLocation returns the folder of the ffmpeg binary.
+//
+// The PATH of a server can point at a build that crashes on a fragmented
+// mp4. A known good build in /usr/bin wins over it, the search stops at
+// the first folder that holds an ffmpeg.
+func defaultFFMPEGLocation() string {
+	for _, folder := range []string{"/usr/bin", "/usr/local/bin", "/bin"} {
+		if info, err := os.Stat(filepath.Join(folder, "ffmpeg")); err == nil && !info.IsDir() {
+			return folder
+		}
+	}
+	return ""
+}
+
 func readBoolEnv(name string, fallback bool) bool {
 	value := strings.TrimSpace(os.Getenv(name))
 	if value == "" {

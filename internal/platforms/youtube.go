@@ -257,12 +257,18 @@ func SelectAudioStream(info map[string]any) map[string]any {
 // DownloadVideo downloads a video with yt-dlp using the given format selector.
 func (s *YouTubeService) DownloadVideo(ctx context.Context, url, filename, formatSelector string, maxSize int64) (string, error) {
 	template := filepath.Join(s.outputDir, filename)
-	return s.ytdlp.Download(ctx, url, DownloadOptions{
+	opts := DownloadOptions{
 		FormatSelector: formatSelector,
 		OutputTemplate: template,
 		MergeFormat:    "mp4",
 		MaxFilesize:    maxSize,
-	})
+	}
+	path, err := s.ytdlp.Download(ctx, url, opts)
+	if err != nil && formatSelector != "best" && strings.Contains(err.Error(), "Requested format is not available") {
+		opts.FormatSelector = "best"
+		return s.ytdlp.Download(ctx, url, opts)
+	}
+	return path, err
 }
 
 // DownloadAudio downloads the audio track of a video in the requested format.
